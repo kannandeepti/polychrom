@@ -207,20 +207,43 @@ def plot_contact_maps(conformations, runs, basepath, simstring):
     fig.tight_layout()
     plt.savefig(f'plots/contact_map_{simstring}_n{len(conformations)}.pdf')
 
+def process_existing_simulations(simdir=None, savepath=Path('data')):
+    """ Script to look inside a simulation directory, find all parameter sweeps that have
+    been done so far, extract conformations, calculated mean squared separations, and
+    plot contact maps."""
+    if simdir is None:
+        simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
+    basepaths = [d/'runs200000_100' for d in simdir.iterdir()]
+    simstrings = ['b' + str(d.name) for d in simdir.iterdir()]
+    print(simstrings)
+    for i, basepath in enumerate(basepaths):
+        conf_file = savepath / f'conformations_{simstrings[i]}.npy'
+        if conf_file.is_file():
+            conformations = np.load(conf_file)
+        else:
+            conformations, runs = extract_conformations(basepath)
+            print(f'Extract conformations for simulation {simstrings[i]}')
+            np.save(conf_file, conformations)
+        if not (savepath / f'mean_squared_separation_{simstrings[i]}.csv').is_file():
+            mean_squared_separation(conformations, savepath, simstrings[i])
+            print(f'Computed mean squared separation for simulation')
+        if not (savepath / f'contact_map_{simstrings[i]}_cutoff2.0.npy').is_file():
+            plot_contact_maps(conformations, runs, basepath, simstrings[i])
 
 if __name__ == "__main__":
     simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
     savepath = Path('data')
-    basepaths = [simdir / 'comps_3x/runs200000_100', simdir / 'comps_7x/runs200000_100']
+    process_existing_simulations(simdir)
+    #basepaths = [simdir / 'comps_3x/runs200000_100', simdir / 'comps_7x/runs200000_100']
     #             simdir / 'comps_10x/runs200000_100', simdir / 'comps_19x/runs200000_100']
-    simstrings = ['bcomps_3x', 'bcomps_7x']
-    for i, basepath in enumerate(basepaths):
-        conformations, runs = extract_conformations(basepath)
-        print(f'Extract conformations for simulation {simstrings[i]}')
-        np.save(savepath / f'conformations_{simstrings[i]}.npy', conformations)
-        mean_squared_separation(conformations, savepath, simstrings[i])
-        print(f'Computed mean squared separation for simulation')
-        plot_contact_maps(conformations, runs, basepath, simstrings[i])
+   #simstrings = ['bcomps_3x', 'bcomps_7x']
+   #for i, basepath in enumerate(basepaths):
+   #    conformations, runs = extract_conformations(basepath)
+   #    print(f'Extract conformations for simulation {simstrings[i]}')
+   #    np.save(savepath / f'conformations_{simstrings[i]}.npy', conformations)
+   #    mean_squared_separation(conformations, savepath, simstrings[i])
+   #    print(f'Computed mean squared separation for simulation')
+   #    plot_contact_maps(conformations, runs, basepath, simstrings[i])
 
     # basepaths = [simdir/'corr_sameT/ensemble10000_100', simdir/'corr_step19x/ensemble10000_100']
     # simstrings = ['corr_sameT', 'corr_step19x']
