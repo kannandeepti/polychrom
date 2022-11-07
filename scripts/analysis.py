@@ -41,6 +41,18 @@ from matplotlib.colors import LogNorm, Normalize
 from matplotlib.gridspec import GridSpec
 import seaborn as sns
 
+import cooltools.lib.plotting
+from cooltools.lib.numutils import (
+    observed_over_expected,
+    iterative_correction_symmetric,
+    LazyToeplitz
+)
+import matplotlib.pyplot as plt
+from matplotlib.ticker import EngFormatter
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib import ticker
+
 
 def draw_power_law_triangle(alpha, x0, width, orientation, base=10,
                             hypotenuse_only=False, **kwargs):
