@@ -176,9 +176,10 @@ class Simulation(object):
             Machines with 1 GPU automatically select their GPU.
 
         integrator : "langevin", "variableLangevin", "verlet", "variableVerlet",
-                     "brownian", optional Integrator to use
-                     (see Openmm class reference)
-
+                     "brownian", or tuple containing Integrator from Openmm class reference and string 
+                     defining integrator type. For user-defined integrators, specify type "brownian" to 
+                     avoid checking if kinetic energy exceeds max_Ek.
+                     
         mass : number or np.array
             Particle mass (default 100 amu)
 
@@ -217,7 +218,7 @@ class Simulation(object):
             Using one decimal is safe most of the time, and reduces storage to 40% of int32.
             NOTE that using periodic boundary conditions will make storage advantage less.
 
-        reporters: list, optional 
+        reporters: list, optional
             List of reporters to use in the simulation.
 
         """
@@ -319,8 +320,9 @@ class Simulation(object):
                 )
         else:
             logging.info("Using the provided integrator object")
-            self.integrator = self.integrator_type
-            self.integrator_type = "UserDefined"
+            integrator, integrator_type = self.integrator_type
+            self.integrator = integrator
+            self.integrator_type = integrator_type
             kwargs["integrator"] = "user_defined"
 
         self.N = kwargs["N"]
@@ -391,11 +393,7 @@ class Simulation(object):
         ----------
 
         data : Nx3 array-like
-<<<<<<< HEAD
-            Array of positions 
-=======
             Array of positions
->>>>>>> 27e69558fe949f5cc1756e7f6d71d4f32f7933e5
 
         center : bool or "zero", optional
             Move center of mass to zero before starting the simulation
@@ -746,15 +744,8 @@ class Simulation(object):
                 logging.info("applying forces")
                 sys.stdout.flush()
             self._apply_forces()
-            #self.initialize(v=v)
             self.forces_applied = True
         
-        #self.state = self.context.getState(
-        #    getPositions=True, getVelocities=get_velocities, getEnergy=True
-        #)
-        #velocities = self.state.getVelocities(asNumpy=True)
-        #print(velocities)
-
         a = time.time()
         self.integrator.step(steps)  # integrate!
 
