@@ -1,5 +1,6 @@
 import warnings
-from math import sqrt, sin, cos
+from math import cos, sin, sqrt
+from typing import Callable, Tuple
 
 import numpy as np
 
@@ -11,15 +12,15 @@ def create_spiral(r1, r2, N):
 
     Run it with r1=10, r2 = 13, N=5000, and see what it does.
     """
-    Pi = 3.141592
+    pi = 3.141592
     points = []
     finished = [False]
 
     def rad(phi):
-        return phi / (2 * Pi)
+        return phi / (2 * pi)
 
-    def ang(rad):
-        return 2 * Pi * rad
+    def ang(radians):
+        return 2 * pi * radians
 
     def coord(phi):
         r = rad(phi)
@@ -37,7 +38,7 @@ def create_spiral(r1, r2, N):
 
     def nextphi(phi):
         phi1 = phi
-        phi2 = phi + 0.7 * Pi
+        phi2 = phi + 0.7 * pi
         mid = phi2
         while abs(dist(phi, mid) - 1) > 0.00001:
             mid = (phi1 + phi2) / 2.0
@@ -50,7 +51,7 @@ def create_spiral(r1, r2, N):
     def prevphi(phi):
 
         phi1 = phi
-        phi2 = phi - 0.7 * Pi
+        phi2 = phi - 0.7 * pi
         mid = phi2
 
         while abs(dist(phi, mid) - 1) > 0.00001:
@@ -62,7 +63,7 @@ def create_spiral(r1, r2, N):
         return mid
 
     def add_point(point, points=points, finished=finished):
-        if (len(points) == N) or (finished[0] == True):
+        if (len(points) == N) or finished[0]:
             points = np.array(points)
             finished[0] = True
             print("finished!!!")
@@ -74,9 +75,9 @@ def create_spiral(r1, r2, N):
     curphi = ang(r1)
     add_point(fullcoord(curphi, z))
     while True:
-        if finished[0] == True:
+        if finished[0]:
             return np.array(points)
-        if forward == True:
+        if forward:
             curphi = nextphi(curphi)
             add_point(fullcoord(curphi, z))
             if rad(curphi) > r2:
@@ -119,8 +120,12 @@ def create_random_walk(step_size, N):
 
 
 def create_constrained_random_walk(
-    N, constraint_f, starting_point=(0, 0, 0), step_size=1.0
-):
+    N: int,
+    constraint_f: Callable[[Tuple[float, float, float]], bool],
+    starting_point=(0, 0, 0),
+    step_size=1.0,
+    polar_fixed=None,
+) -> bool:
     """
     Creates a constrained freely joined chain of length N with step step_size.
     Each step of a random walk is tested with the constraint function and is
@@ -131,7 +136,7 @@ def create_constrained_random_walk(
     ----------
     N : int
         The number of steps
-    constraint_f : function((float, float, float))
+    constraint_f : callable
         The constraint function.
         Must accept a tuple of 3 floats with the tentative position of a particle
         and return True if the new position is accepted and False is it is forbidden.
@@ -139,30 +144,68 @@ def create_constrained_random_walk(
         The starting point of a random walk.
     step_size: float
         The size of a step of the random walk.
-
+    polar_fixed: float, optional
+        If specified, the random_walk is forced to fix the polar angle at polar_fixed.
+        The implementation includes backtracking if no steps were possible, but if seriously overconstrained,
+        the algorithm can get stuck in an infinite loop.
     """
 
     i = 1
     j = N
+    n_reps = 0
     out = np.full((N, 3), np.nan)
     out[0] = starting_point
 
     while i < N:
         if j == N:
             theta, u = _random_points_sphere(N).T
+            if polar_fixed is not None:
+                # fixes the polar angle in uniform distribution on the sphere
+                u = np.cos(polar_fixed) * np.ones(len(u))
             dx = step_size * np.sqrt(1.0 - u * u) * np.cos(theta)
             dy = step_size * np.sqrt(1.0 - u * u) * np.sin(theta)
             dz = step_size * u
             d = np.vstack([dx, dy, dz]).T
+            n_reps += 1
             j = 0
+        if polar_fixed is not None and i > 1:
+            # Rotate the generated point to a coordinate system with the previous
+            # displacement pointing along the z-axis
 
-        new_p = out[i - 1] + d[j]
+            past_displacement = out[i - 1] - out[i - 2]
+
+            vec_to_rot = d[j]
+            rot_axis = np.cross(past_displacement, np.array([0, 0, 1]))
+            rot_axis = rot_axis / np.linalg.norm(rot_axis)
+            rot_angle = -np.arccos(np.dot(past_displacement, np.array([0, 0, 1])) / np.linalg.norm(past_displacement))
+            # Rotating with the Rodriques' rotation formula
+            # https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+            next_displacement = (
+                vec_to_rot * np.cos(rot_angle)
+                + np.cross(rot_axis, vec_to_rot) * np.sin(rot_angle)
+                + rot_axis * np.dot(rot_axis, vec_to_rot) * (1 - np.cos(rot_angle))
+            )
+            # Add the rotated point
+            new_p = out[i - 1] + next_displacement
+        else:
+            new_p = out[i - 1] + d[j]
 
         if constraint_f(new_p):
             out[i] = new_p
             i += 1
 
         j += 1
+        if n_reps > 2:
+            if i != 1:
+                # Backtracking if no moves are possible
+                i -= 1
+                n_reps = 0
+            else:
+                # If the first point is reached, there is nothing to do
+                raise RuntimeError(
+                    "The walk-generation cannot take the first step! Have another look at the"
+                    " constraints and initial condition"
+                )
 
     return out
 
@@ -219,7 +262,7 @@ def grow_cubic(N, boxSize, method="standard"):
             raise ValueError("polymer too short for the box size")
 
     else:
-        raise ValueError("select methon from standard, extended, or linear")
+        raise ValueError("method should be: standard, extended, or linear")
 
     b = np.zeros((boxSize + 2, boxSize + 2, boxSize + 2), int)
     for i in a:
