@@ -25,9 +25,7 @@ Bids[40:60] = 1
 Bids[80:] = 1
 particle_inds = np.arange(0, N, dtype="int")
 sticky_inds = particle_inds[Bids]
-print(sticky_inds)
 counts = np.bincount(sticky_inds, minlength=N)
-print(counts)
 
 def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize=100):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
@@ -68,16 +66,17 @@ def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    reporter = HDF5Reporter(folder="active_inactive", max_data_length=100, overwrite=True)
+    reporter = HDF5Reporter(folder="sticky_sim", max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
         platform="CUDA",
         # for custom integrators, feed a tuple with the integrator class reference and a string specifying type,
         # e.g. "brownian", "variableLangevin", "variableVerlet", or simply "UserDefined" if none of the above.
-        integrator=(integrator, "brownian"),
-        timestep=timestep,
-        temperature=temperature,
+        integrator="variableLangevin",
+        #timestep=timestep,
+        #temperature=temperature,
         GPU=gpuid,
-        collision_rate=collision_rate,
+        collision_rate=0.01,
+        error_tol = 0.0005,
         N=N,
         save_decimals=2,
         PBCbox=False,
@@ -87,11 +86,13 @@ def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize
     polymer = starting_conformations.grow_cubic(N, int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N, 3)))  # initializes velocities of all monomers to zero (no inertia)
-    sim.add_force(forces.selective_SSW(sim, 
+    f_sticky = forces.selective_SSW(sim, 
                                        sticky_inds, 
                                        extraHardParticlesIdxs=[], #don't make any particles extra hard
                                        attractionEnergy=0.0, #base attraction energy for all particles
-                                       selectiveAttractionEnergy=E0))
+                                       selectiveAttractionEnergy=E0)
+    print(f"cutoff distance: {f_sticky.getCutoffDistance()}")
+    sim.add_force(f_sticky)
     sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
     sim.add_force(
         forcekits.polymer_chains(
@@ -104,11 +105,8 @@ def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize
             },
             angle_force_func=None,
             angle_force_kwargs={},
-            nonbonded_force_func=forces.polynomial_repulsive,
-            nonbonded_force_kwargs={
-                "trunc": 3.0,  # this will let chains cross sometimes
-                # 'trunc':10.0, # this will resolve chain crossings and will not let chain cross anymore
-            },
+            nonbonded_force_func=None,
+            nonbonded_force_kwargs={},
             except_bonds=True,
         )
     )
@@ -123,7 +121,7 @@ def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        raise ValueError("This script takes in 2 arguments: [gpuidi (int)], [activity_ratio (float)]")
+        raise ValueError("This script takes in 2 arguments: [gpuidi (int)], [E0 (float)]")
     gpuid = int(sys.argv[1])
-    E0 = int(sys.argv[2])
-    #run_sticky_sim(gpuid, N, sticky_inds, E0)
+    E0 = float(sys.argv[2])
+    run_sticky_sim(gpuid, N, sticky_inds, E0)
