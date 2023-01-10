@@ -125,5 +125,5 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         raise ValueError("This script takes in 2 arguments: [gpuidi (int)], [activity_ratio (float)]")
     gpuid = int(sys.argv[1])
-    E0 = int(sys.argv[2])
-    #run_sticky_sim(gpuid, N, sticky_inds, E0)
+    E0 = float(sys.argv[2])
+    run_sticky_sim(gpuid, N, sticky_inds, E0)
