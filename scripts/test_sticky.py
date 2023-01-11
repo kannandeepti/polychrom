@@ -13,10 +13,15 @@ import numpy as np
 import openmm
 from simtk import unit
 
-import polychrom
+try:
+    import polychrom
+except:
+    sys.path.append("/home/dkannan/git-remotes/polychrom/")
+    import polychrom
 from polychrom import forcekits, forces, simulation, starting_conformations
 from polychrom.contrib.integrators import ActiveBrownianIntegrator
 from polychrom.hdf5_format import HDF5Reporter
+
 
 N = 100  # 1000 monomers
 Bids = np.zeros(N, dtype="bool")
@@ -27,7 +32,7 @@ particle_inds = np.arange(0, N, dtype="int")
 sticky_inds = particle_inds[Bids]
 counts = np.bincount(sticky_inds, minlength=N)
 
-def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize=100):
+def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=2000, blocksize=100):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
 
@@ -66,17 +71,17 @@ def run_sticky_sim(gpuid, N, sticky_ids, E0, timestep=170, nblocks=10, blocksize
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    reporter = HDF5Reporter(folder="sticky_sim", max_data_length=100, overwrite=True)
+    simdir = "/net/levsha/share/deepti/simulations/stickyAB/test"
+    reporter = HDF5Reporter(folder=simdir, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
         platform="CUDA",
         # for custom integrators, feed a tuple with the integrator class reference and a string specifying type,
         # e.g. "brownian", "variableLangevin", "variableVerlet", or simply "UserDefined" if none of the above.
-        integrator="variableLangevin",
-        #timestep=timestep,
-        #temperature=temperature,
+        integrator=(integrator, "brownian"),
+        timestep=timestep,
+        temperature=temperature,
         GPU=gpuid,
-        collision_rate=0.01,
-        error_tol = 0.0005,
+        collision_rate=collision_rate,
         N=N,
         save_decimals=2,
         PBCbox=False,

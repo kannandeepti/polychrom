@@ -9,11 +9,15 @@ Deepti Kannan, 2023
 import time
 import numpy as np
 import os, sys
-import polychrom
-from polychrom import simulation, starting_conformations, forces, forcekits
-from polychrom.integrators import ActiveBrownianIntegrator
-import openmm
+try:
+    import polychrom
+except:
+    sys.path.append("/home/dkannan/git-remotes/polychrom/")
+    import polychrom
+from polychrom import forcekits, forces, simulation, starting_conformations
+from polychrom.contrib.integrators import ActiveBrownianIntegrator
 from polychrom.hdf5_format import HDF5Reporter
+import openmm
 from simtk import unit
 from pathlib import Path
 
@@ -24,9 +28,9 @@ basepath = Path("/net/levsha/share/deepti/simulations/chr2_blobel_AB")
 ids = np.load('/net/levsha/share/deepti/data/ABidentities_blobel2021_chr2_35Mb_60Mb.npy')
 N=len(ids)
 #1 is B, 0 is A
-Bids ^= ids
+ids ^= ids
 particle_inds = np.arange(0, N, dtype="int")
-sticky_inds = particle_inds[Bids]
+sticky_inds = particle_inds[ids]
 
 def run_sticky_sim(gpuid, run_number, N, sticky_ids, E0, timestep=170, nblocks=200000, blocksize=100):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
@@ -74,7 +78,7 @@ def run_sticky_sim(gpuid, run_number, N, sticky_ids, E0, timestep=170, nblocks=2
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
         platform="CUDA", 
-        integrator=integrator,
+        integrator=(integrator, "brownian"),
         timestep=timestep,
         temperature=temperature,
         GPU=gpuid,
