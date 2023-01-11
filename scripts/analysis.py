@@ -7,6 +7,7 @@ Deepti Kannan. 2022
 
 from numba import jit
 import os
+import sys
 import importlib as imp
 from collections import defaultdict
 import h5py
@@ -25,7 +26,11 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d, interp2d
 from scipy.spatial.distance import pdist, squareform
 
-import polychrom
+try:
+    import polychrom
+except:
+    sys.path.append('/home/dkannan/git-remotes/polychrom')
+    import polychrom
 from polychrom import polymer_analyses, contactmaps, polymerutils
 from polychrom.hdf5_format import list_URIs, load_URI, load_hdf5_file
 
@@ -232,6 +237,7 @@ def process_existing_simulations(simdir=None, savepath=Path('data')):
         conf_file = savepath / f'conformations_{simstrings[i]}.npy'
         if conf_file.is_file():
             conformations = np.load(conf_file)
+            runs = len([f for f in basepath.iterdir() if f.is_dir()])
         else:
             conformations, runs = extract_conformations(basepath)
             print(f'Extract conformations for simulation {simstrings[i]}')
@@ -243,9 +249,14 @@ def process_existing_simulations(simdir=None, savepath=Path('data')):
             plot_contact_maps(conformations, runs, basepath, simstrings[i])
 
 if __name__ == "__main__":
-    simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
+    simdir = Path('/net/levsha/share/deepti/simulations/Deq1')
+    basepath = simdir/'runs200000_100'
     savepath = Path('data')
-    process_existing_simulations(simdir)
+    simstring = str(simdir.name)
+    conformations = np.load(savepath / f'conformations_{simstring}.npy')
+    runs = len([f for f in basepath.iterdir() if f.is_dir()])
+    plot_contact_maps(conformations, runs, basepath, simstring)
+    #process_existing_simulations(simdir)
     #basepaths = [simdir / 'comps_3x/runs200000_100', simdir / 'comps_7x/runs200000_100']
     #             simdir / 'comps_10x/runs200000_100', simdir / 'comps_19x/runs200000_100']
    #simstrings = ['bcomps_3x', 'bcomps_7x']
