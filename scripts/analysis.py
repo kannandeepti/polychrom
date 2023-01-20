@@ -154,14 +154,15 @@ def contact_maps_over_time(ntimepoints, traj_length=100000,
                 conformations = np.load(conf_file)
                 runs = len([f for f in basepath.iterdir() if f.is_dir()])
                 print(f'Loaded conformations for simulation {simstrings[i]}, t={t}')
-            #else:
-            #    continue
-            #    conformations, runs = extract_conformations(basepath, start=start, end=end, 
-            #                                                every_other=time_between_snapshots)
-            #    print(f'Extract conformations for simulation {simstrings[i]}, t={t}')
-            #    np.save(conf_file, conformations)
-                plot_contact_maps(conformations, runs, basepath, simstrings[i] + f'_t{t}')
+            else:
+                continue
+                conformations, runs = extract_conformations(basepath, start=start, end=end, 
+                                                            every_other=time_between_snapshots)
+                print(f'Extract conformations for simulation {simstrings[i]}, t={t}')
+                np.save(conf_file, conformations)
 
+            if not (savepath / f'contact_map_{simstrings[i]}_t{t}_cutoff2.0.npy').is_file():
+                plot_contact_maps(conformations, runs, basepath, simstrings[i])
 
 def plot_contact_maps(conformations, runs, basepath, simstring):
     """ Plot a 6-panel figure showing ensemble-averaged contact maps made up from the list of
