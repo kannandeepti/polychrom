@@ -6,6 +6,7 @@ Deepti Kannan. 2022
 
 from numba import jit
 import os
+import sys
 import importlib as imp
 from collections import defaultdict
 import h5py
@@ -24,7 +25,11 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d, interp2d
 from scipy.spatial.distance import pdist, squareform
 
-import polychrom
+try:
+    import polychrom
+except:
+    sys.path.append('/home/dkannan/git-remotes/polychrom')
+    import polychrom
 from polychrom import polymer_analyses, contactmaps, polymerutils
 from polychrom.hdf5_format import list_URIs, load_URI, load_hdf5_file
 
@@ -131,8 +136,8 @@ def process_data(filename, score_quantile=25, q_lo=0.025, q_hi=0.975, n_groups=3
     #compute saddle matrices
     S, C = saddle(e1, mat_oe, n_groups)
     #compute compartment score from saddles
-    score = comp_score_2(S, C, score_quantile)
-    return score
+    cs2, AA_cs2, BB_cs2 = comp_score_2(S, C, score_quantile)
+    return cs2, AA_cs2, BB_cs2
 
 def comp_score_2(S, C, quantile):
     """ Compute normalized compartment score from interaction_sum, interaction_count
@@ -141,7 +146,10 @@ def comp_score_2(S, C, quantile):
     m, n = S.shape
     AA_oe, BB_oe, AB_oe, AA_ratios, BB_ratios, ratios = saddle_strength_A_B(S, C)
     ind = int(quantile // (100 / n))
-    return (ratios[ind] - 1) / (ratios[ind] + 1)
+    cs2 = (ratios[ind] - 1) / (ratios[ind] + 1)
+    AA_cs2 = (AA_ratios[ind] - 1) / (AA_ratios[ind] + 1)
+    BB_cs2 = (BB_ratios[ind] - 1) / (BB_ratios[ind] + 1)
+    return cs2, AA_cs2, BB_cs2
 
 def saddle_strength_A_B(S, C):
     """
@@ -275,8 +283,6 @@ def saddleplot(
 
     df, binedges = digitize_track(track, qrange, n_bins)
     e1mean = df['E1'].groupby(df['E1.d']).mean()
-    print(e1mean.shape)
-    print(binedges.shape)
 
     if qrange is not None:
         lo, hi = qrange
@@ -388,16 +394,85 @@ def saddleplot(
     plt.savefig(f'plots/{tag}_E1_saddle.pdf')
     return grid
 
-if __name__ == "__main__":
+def monomer_density_from_volume_density(x, N=1000):
+    R = ((N * (0.5)**3) / x)**(1/3)
+    density = N / (4/3 * np.pi * R**3)
+    return density
+
+def volume_density_from_monomer_density(y, N=1000):
+    r = (3 * N / (4 * 3.141592 * y)) ** (1/3)
+    vol_fraction = N * (0.5)**3 / r**3
+    return vol_fraction
+
+def compute_comp_scores_sticky():
     savepath = Path('data')
-    df = pd.DataFrame(columns=['activity_ratio', 'comp_score2'])
-    activity_ratios = []
+    df = pd.DataFrame(columns=['volume_fraction', 'BB_energy', 't', 'BB_cs2', 'AA_cs2', 'comp_score2'])
+    vol_fraction = []
+    BB_E0 = []
+    times = []
+    BB_strength = []
+    AA_strength = []
     comp_scores = []
-    for file in savepath.glob('contact_map_bcomps_*'):
+    for file in savepath.glob('contact_map_sticky_BB*'):
+        BB_E0.append(float(str(file.name).split('_')[4]))
+        if str(file.name).split('_')[5][0] == 'v':
+            vol_fraction.append(float(str(file.name).split('_')[5][1:]))
+        else:
+            v = volume_density_from_monomer_density(0.224)
+            vol_fraction.append(v)
+        if str(file.name).split('_')[5][0] == 't':
+            times.append(float(str(file.name).split('_')[5][1:]))
+        else:
+            times.append(100000)
+        cs2, AA_cs2, BB_cs2 = process_data(file)
+        BB_strength.append(BB_cs2)
+        AA_strength.append(AA_cs2)
+        comp_scores.append(cs2)
+    df['volume_fraction'] = vol_fraction
+    df['BB_energy'] = BB_E0
+    df['t'] = times
+    df['BB_cs2'] = BB_strength
+    df['AA_cs2'] = AA_strength
+    df['comp_score2'] = comp_scores
+    df.sort_values('BB_energy', inplace=True)
+    print(df)
+    df.to_csv(savepath/'comp_scores_q25_chr2_blobel_stickyBB.csv')
+
+def compute_comp_scores_active():
+    savepath = Path('data')
+    df = pd.DataFrame(columns=['volume_fraction', 'activity_ratio', 't', 'BB_cs2', 'AA_cs2', 'comp_score2'])
+    times = []
+    vol_fraction = []
+    activity_ratios = []
+    BB_strength = []
+    AA_strength = []
+    comp_scores = []
+    for file in savepath.glob('contact_map_[bc]*'):
+        print(file)
         activity_ratios.append(float(str(file.name).split('_')[3][:-1]))
-        comp_scores.append(process_data(file))
+        if str(file.name).split('_')[4][0] == 'v':
+            vol_fraction.append(float(str(file.name).split('_')[4][1:]))
+        else:
+            v = volume_density_from_monomer_density(0.224)
+            vol_fraction.append(v)
+        if str(file.name).split('_')[4][0] == 't':
+            times.append(float(str(file.name).split('_')[4][1:]))
+        else:
+            times.append(100000)
+        cs2, AA_cs2, BB_cs2 = process_data(file)
+        BB_strength.append(BB_cs2)
+        AA_strength.append(AA_cs2)
+        comp_scores.append(cs2)
+    df['volume_fraction'] = vol_fraction
     df['activity_ratio'] = activity_ratios
+    df['t'] = times
+    df['BB_cs2'] = BB_strength
+    df['AA_cs2'] = AA_strength
     df['comp_score2'] = comp_scores
     df.sort_values('activity_ratio', inplace=True)
     print(df)
-    df.to_csv(savepath/'comp_scores_q25_chr2_blobel.csv')
+    df.to_csv(savepath/'comp_scores_q25_chr2_blobel_activity_ratios.csv')
+    
+if __name__ == "__main__":
+    compute_comp_scores_sticky()
+    compute_comp_scores_active()

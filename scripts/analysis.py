@@ -58,75 +58,21 @@ from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import ticker
 
-
-def draw_power_law_triangle(alpha, x0, width, orientation, base=10,
-                            hypotenuse_only=False, **kwargs):
-    """Draw a triangle showing the best-fit power-law on a log-log scale.
-
-    Parameters
-    ----------
-    alpha : float
-        the power-law slope being demonstrated
-    x0 : (2,) array_like
-        the "left tip" of the power law triangle, where the hypotenuse starts
-        (in log units, to be consistent with draw_triangle)
-    width : float
-        horizontal size in number of major log ticks (default base-10)
-    orientation : string
-        'up' or 'down', control which way the triangle's right angle "points"
-    base : float
-        scale "width" for non-base 10
-
-    Returns
-    -------
-    corner : (2,) np.array
-        coordinates of the right-angled corner of the triangle
-    """
-    if 'color' in kwargs:
-        color = kwargs['color']
-    else:
-        color = 'k'
-    x0, y0 = [base ** x for x in x0]
-    x1 = x0 * base ** width
-    y1 = y0 * (x1 / x0) ** alpha
-    plt.plot([x0, x1], [y0, y1], 'k')
-    if (alpha >= 0 and orientation == 'up') \
-            or (alpha < 0 and orientation == 'down'):
-        if hypotenuse_only:
-            plt.plot([x0, x1], [y0, y1], color=color, **kwargs)
-        else:
-            plt.plot([x0, x1], [y1, y1], color=color, **kwargs)
-            plt.plot([x0, x0], [y0, y1], color=color, **kwargs)
-        # plt.plot lines have nice rounded caps
-        # plt.hlines(y1, x0, x1, **kwargs)
-        # plt.vlines(x0, y0, y1, **kwargs)
-        corner = [x0, y1]
-    elif (alpha >= 0 and orientation == 'down') \
-            or (alpha < 0 and orientation == 'up'):
-        if hypotenuse_only:
-            plt.plot([x0, x1], [y0, y1], color=color, **kwargs)
-        else:
-            plt.plot([x0, x1], [y0, y0], color=color, **kwargs)
-            plt.plot([x1, x1], [y0, y1], color=color, **kwargs)
-        # plt.hlines(y0, x0, x1, **kwargs)
-        # plt.vlines(x1, y0, y1, **kwargs)
-        corner = [x1, y0]
-    else:
-        raise ValueError(r"Need $\alpha\in\mathbb{R} and orientation\in{'up', 'down'}")
-    return corner
+import deepti_utils
+from deepti_utils.plotting import draw_power_law_triangle
 
 
-def extract(path, start=100000, every_other=10000):
+def extract(path, start=100000, every_other=1000, end=200000):
     """ Extract conformations from a single path. """
     try:
         confs = list_URIs(path)
-        uris = confs[start::every_other]
+        uris = confs[start:end:every_other]
     except:
         uris = []
     return uris
 
 
-def extract_conformations(basepath, ncores=25):
+def extract_conformations(basepath, ncores=25, **kwargs):
     """ Extract conformations to be included in ensemble-averaged contact map. """
     basepath = Path(basepath)
     rundirs = [f for f in basepath.iterdir() if f.is_dir()]
@@ -134,6 +80,8 @@ def extract_conformations(basepath, ncores=25):
     # rundirs.remove(rundirs[runnums.index('run1974')])
     conformations = []
     runs = len(rundirs)
+    print(runs)
+    #extract_func = partial(extract, **kwargs)
     with mp.Pool(ncores) as p:
         confs = p.map(extract, rundirs)
     conformations = list(itertools.chain.from_iterable(confs))
@@ -181,6 +129,38 @@ def mean_squared_separation(conformations, savepath, simstring, N=1000):
     df.to_csv(Path(savepath) / f'mean_squared_separation_{simstring}.csv', index=False)
     df2 = pd.DataFrame(rsquared)
     df2.to_csv(Path(savepath) / f'rsquared_{simstring}.csv', index=False)
+    
+def contact_maps_over_time(ntimepoints, traj_length=100000,
+                           time_between_snapshots=10, simdir=None, savepath=Path('data')):
+    """ Plot an ensemble-averaged contact map at multiple `timepoints` in a simulation trajectory. """
+    #200 independent simulations. to get good statistics, use 10 conformation per simulation
+    #centered around each time point
+    DT = traj_length / ntimepoints
+    timepoints = np.arange(DT, (ntimepoints + 1)*DT, DT)
+    print(timepoints)
+    
+    if simdir is None:
+        simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
+    basepaths = [d/'runs200000_100' for d in [simdir/'comps_5.974x', simdir/'sticky_BB_0.4']]
+    simstrings = [str(d.name) for d in [simdir/'comps_5.974x', simdir/'sticky_BB_0.4']]
+    print(simstrings)
+    for i, basepath in enumerate(basepaths):
+        for t in timepoints:
+            start = int(t - 45)
+            end = int(t + 50)
+            conf_file = savepath / f'conformations_{simstrings[i]}_t{int(t)}.npy'
+            print(conf_file)
+            if conf_file.is_file():
+                conformations = np.load(conf_file)
+                runs = len([f for f in basepath.iterdir() if f.is_dir()])
+                print(f'Loaded conformations for simulation {simstrings[i]}, t={t}')
+            #else:
+            #    continue
+            #    conformations, runs = extract_conformations(basepath, start=start, end=end, 
+            #                                                every_other=time_between_snapshots)
+            #    print(f'Extract conformations for simulation {simstrings[i]}, t={t}')
+            #    np.save(conf_file, conformations)
+                plot_contact_maps(conformations, runs, basepath, simstrings[i] + f'_t{t}')
 
 
 def plot_contact_maps(conformations, runs, basepath, simstring):
@@ -248,37 +228,34 @@ def process_existing_simulations(simdir=None, savepath=Path('data')):
         if not (savepath / f'contact_map_{simstrings[i]}_cutoff2.0.npy').is_file():
             plot_contact_maps(conformations, runs, basepath, simstrings[i])
 
+def process_sticky_simulations(simdir=None, savepath=Path('data')):
+    """ Script to look inside a simulation directory, find all parameter sweeps that have
+    been done so far, extract conformations, calculated mean squared separations, and
+    plot contact maps."""
+    if simdir is None:
+        simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
+    basepaths = [d/'runs200000_100' for d in simdir.glob('comps_5x_v*')]
+    simstrings = [str(d.name) for d in simdir.glob('comps_5x_v*')]
+    print(simstrings)
+    for i, basepath in enumerate(basepaths):
+        conf_file = savepath / f'conformations_{simstrings[i]}.npy'
+        #if conf_file.is_file():
+        #    conformations = np.load(conf_file)
+        #    runs = len([f for f in basepath.iterdir() if f.is_dir()])
+        #else:
+        conformations, runs = extract_conformations(basepath)
+        print(f'Extract conformations for simulation {simstrings[i]}')
+        np.save(conf_file, conformations)
+        #if not (savepath / f'contact_map_{simstrings[i]}_cutoff2.0.npy').is_file():
+        plot_contact_maps(conformations, runs, basepath, simstrings[i])
+            
 if __name__ == "__main__":
-    simdir = Path('/net/levsha/share/deepti/simulations/Deq1')
-    basepath = simdir/'runs200000_100'
-    savepath = Path('data')
-    simstring = str(simdir.name)
-    conformations = np.load(savepath / f'conformations_{simstring}.npy')
-    runs = len([f for f in basepath.iterdir() if f.is_dir()])
-    plot_contact_maps(conformations, runs, basepath, simstring)
-    #process_existing_simulations(simdir)
-    #basepaths = [simdir / 'comps_3x/runs200000_100', simdir / 'comps_7x/runs200000_100']
-    #             simdir / 'comps_10x/runs200000_100', simdir / 'comps_19x/runs200000_100']
-   #simstrings = ['bcomps_3x', 'bcomps_7x']
-   #for i, basepath in enumerate(basepaths):
-   #    conformations, runs = extract_conformations(basepath)
-   #    print(f'Extract conformations for simulation {simstrings[i]}')
-   #    np.save(savepath / f'conformations_{simstrings[i]}.npy', conformations)
-   #    mean_squared_separation(conformations, savepath, simstrings[i])
-   #    print(f'Computed mean squared separation for simulation')
-   #    plot_contact_maps(conformations, runs, basepath, simstrings[i])
-
-    # basepaths = [simdir/'corr_sameT/ensemble10000_100', simdir/'corr_step19x/ensemble10000_100']
-    # simstrings = ['corr_sameT', 'corr_step19x']
-    # for i, basepath in enumerate(basepaths):
-    # conformations, runs = extract_single_core(basepaths[0])
-    # plot_contact_maps(conformations, runs, basepaths[0], simstrings[0])
-
-
-
-
-
-
-
-
-
+    #simdir = Path('/net/levsha/share/deepti/simulations/Deq1')
+    #basepath = simdir/'runs200000_100'
+    #savepath = Path('data')
+    #simstring = str(simdir.name)
+    #conformations = np.load(savepath / f'conformations_{simstring}.npy')
+    #runs = len([f for f in basepath.iterdir() if f.is_dir()])
+    #plot_contact_maps(conformations, runs, basepath, simstring)
+    #process_sticky_simulations()
+    contact_maps_over_time(8)
