@@ -233,20 +233,23 @@ def process_sticky_simulations(simdir=None, savepath=Path('data')):
     plot contact maps."""
     if simdir is None:
         simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB')
-    basepaths = [d/'runs200000_100' for d in simdir.glob('comps_5x_v*')]
-    simstrings = [str(d.name) for d in simdir.glob('comps_5x_v*')]
+    basepaths = [d/'runs200000_100' for d in simdir.glob('sticky_BB_0.4')]
+    simstrings = [str(d.name) for d in simdir.glob('sticky_BB_0.4')]
     print(simstrings)
     for i, basepath in enumerate(basepaths):
         conf_file = savepath / f'conformations_{simstrings[i]}.npy'
-        #if conf_file.is_file():
-        #    conformations = np.load(conf_file)
-        #    runs = len([f for f in basepath.iterdir() if f.is_dir()])
-        #else:
-        conformations, runs = extract_conformations(basepath)
-        print(f'Extract conformations for simulation {simstrings[i]}')
-        np.save(conf_file, conformations)
-        #if not (savepath / f'contact_map_{simstrings[i]}_cutoff2.0.npy').is_file():
-        plot_contact_maps(conformations, runs, basepath, simstrings[i])
+        if conf_file.is_file():
+            conformations = np.load(conf_file)
+            runs = len([f for f in basepath.iterdir() if f.is_dir()])
+        else:
+            conformations, runs = extract_conformations(basepath)
+            print(f'Extract conformations for simulation {simstrings[i]}')
+            np.save(conf_file, conformations)
+        if not (savepath / f'mean_squared_separation_{simstrings[i]}.csv').is_file():
+            mean_squared_separation(conformations, savepath, simstrings[i])
+            print(f'Computed mean squared separation for simulation')
+        if not (savepath / f'contact_map_{simstrings[i]}_cutoff2.0.npy').is_file():
+            plot_contact_maps(conformations, runs, basepath, simstrings[i])
             
 if __name__ == "__main__":
     #simdir = Path('/net/levsha/share/deepti/simulations/Deq1')
@@ -256,5 +259,5 @@ if __name__ == "__main__":
     #conformations = np.load(savepath / f'conformations_{simstring}.npy')
     #runs = len([f for f in basepath.iterdir() if f.is_dir()])
     #plot_contact_maps(conformations, runs, basepath, simstring)
-    #process_sticky_simulations()
-    contact_maps_over_time(8)
+    process_sticky_simulations()
+    #contact_maps_over_time(8)
