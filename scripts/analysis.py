@@ -77,13 +77,12 @@ def extract_conformations(basepath, ncores=25, **kwargs):
     basepath = Path(basepath)
     rundirs = [f for f in basepath.iterdir() if f.is_dir()]
     runnums = [p.name for p in rundirs]
-    # rundirs.remove(rundirs[runnums.index('run1974')])
     conformations = []
     runs = len(rundirs)
     print(runs)
-    #extract_func = partial(extract, **kwargs)
+    extract_func = partial(extract, **kwargs)
     with mp.Pool(ncores) as p:
-        confs = p.map(extract, rundirs)
+        confs = p.map(extract_func, rundirs)
     conformations = list(itertools.chain.from_iterable(confs))
     print(f'Number of simulations in directory: {runs}')
     print(f'Number of conformations extracted: {len(conformations)}')
@@ -150,19 +149,18 @@ def contact_maps_over_time(ntimepoints, traj_length=100000,
             end = int(t + 50)
             conf_file = savepath / f'conformations_{simstrings[i]}_t{int(t)}.npy'
             print(conf_file)
-            if conf_file.is_file():
-                conformations = np.load(conf_file)
-                runs = len([f for f in basepath.iterdir() if f.is_dir()])
-                print(f'Loaded conformations for simulation {simstrings[i]}, t={t}')
-            else:
-                continue
-                conformations, runs = extract_conformations(basepath, start=start, end=end, 
-                                                            every_other=time_between_snapshots)
-                print(f'Extract conformations for simulation {simstrings[i]}, t={t}')
-                np.save(conf_file, conformations)
+            #if conf_file.is_file():
+            #    conformations = np.load(conf_file)
+            #    runs = len([f for f in basepath.iterdir() if f.is_dir()])
+            #    print(f'Loaded conformations for simulation {simstrings[i]}, t={t}')
+            #else:
+            conformations, runs = extract_conformations(basepath, start=start, end=end, 
+                                                        every_other=time_between_snapshots)
+            print(f'Extract conformations for simulation {simstrings[i]}, t={t}')
+            np.save(conf_file, conformations)
 
-            if not (savepath / f'contact_map_{simstrings[i]}_t{t}_cutoff2.0.npy').is_file():
-                plot_contact_maps(conformations, runs, basepath, simstrings[i])
+            #if not (savepath / f'contact_map_{simstrings[i]}_t{t}_cutoff2.0.npy').is_file():
+            plot_contact_maps(conformations, runs, basepath, simstrings[i] + f'_t{t}')
 
 def plot_contact_maps(conformations, runs, basepath, simstring):
     """ Plot a 6-panel figure showing ensemble-averaged contact maps made up from the list of
