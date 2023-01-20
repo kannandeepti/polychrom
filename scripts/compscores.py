@@ -423,7 +423,7 @@ def compute_comp_scores_sticky():
         if str(file.name).split('_')[5][0] == 't':
             times.append(float(str(file.name).split('_')[5][1:]))
         else:
-            times.append(100000)
+            times.append(200000)
         cs2, AA_cs2, BB_cs2 = process_data(file)
         BB_strength.append(BB_cs2)
         AA_strength.append(AA_cs2)
@@ -434,7 +434,7 @@ def compute_comp_scores_sticky():
     df['BB_cs2'] = BB_strength
     df['AA_cs2'] = AA_strength
     df['comp_score2'] = comp_scores
-    df.sort_values('BB_energy', inplace=True)
+    df.sort_values(['BB_energy', 't', 'volume_fraction'], inplace=True)
     print(df)
     df.to_csv(savepath/'comp_scores_q25_chr2_blobel_stickyBB.csv')
 
@@ -448,7 +448,6 @@ def compute_comp_scores_active():
     AA_strength = []
     comp_scores = []
     for file in savepath.glob('contact_map_[bc]*'):
-        print(file)
         activity_ratios.append(float(str(file.name).split('_')[3][:-1]))
         if str(file.name).split('_')[4][0] == 'v':
             vol_fraction.append(float(str(file.name).split('_')[4][1:]))
@@ -458,7 +457,7 @@ def compute_comp_scores_active():
         if str(file.name).split('_')[4][0] == 't':
             times.append(float(str(file.name).split('_')[4][1:]))
         else:
-            times.append(100000)
+            times.append(200000)
         cs2, AA_cs2, BB_cs2 = process_data(file)
         BB_strength.append(BB_cs2)
         AA_strength.append(AA_cs2)
@@ -469,7 +468,7 @@ def compute_comp_scores_active():
     df['BB_cs2'] = BB_strength
     df['AA_cs2'] = AA_strength
     df['comp_score2'] = comp_scores
-    df.sort_values('activity_ratio', inplace=True)
+    df.sort_values(['activity_ratio', 't', 'volume_fraction'], inplace=True)
     print(df)
     df.to_csv(savepath/'comp_scores_q25_chr2_blobel_activity_ratios.csv')
     
