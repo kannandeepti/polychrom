@@ -1,5 +1,29 @@
-""" Script to create saddle plots from simulated contact maps
-and compute compartment scores.
+""" 
+Computing compartment strengths from polychrom simulations
+==========================================================
+
+Script to create saddle plots from simulated contact maps
+and compute compartment scores. Simulated contact maps are
+processed in the same way as experimental Hi-C maps. Interative
+correction is applied to raw bin values so that the rows and columns
+of the contact map sum to 1. Then, we divide each diagonal of the
+balanced map by its mean in order to produce an ``observed over expected''
+map. This observed over expected map is mean-centered so that positive
+entries indicate enrichment of contacts above the mean and negative entries
+indicate depletion of contacts below the mean. The first eigenvector (E1)
+of the resulting map tracks A/B compartments. We then sort the rows and
+columns of the observed over expected map by quantiles of E1 to produce a
+coarse-grained obs/exp map with a smaller dimension. We then average over the
+corners of this map to compute compartment scores, defined as
+(AA + BB - 2AB) / (AA + BB + 2AB). 
+
+Notes
+-----
+For real Hi-C data, the first eigenvector is aligned with a separate track, such
+as GC content in order to distinguish A from B. Since no such track exists for
+simulated contact maps, ideally E1 should first be correlated with the known A/B
+identities to identify which corners of the saddle maps correspond to AA vs BB.
+This has not yet been implemented programmatically and was checked by hand.
 
 Deepti Kannan. 2022
 """
@@ -57,70 +81,32 @@ from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import ticker
 
-def _quantile(x, q, **kwargs):
+
+
+def process_data(filename, score_quantile=25, n_groups=38):
+    """ Process a raw simulated contact map (N x N) matrix via iterative correction, compute
+    the observed over expected map, calculate eigenvalues and extract compartment scores.
+
+    Parameters
+    ----------
+    filename : .npy file
+        containing N x N contact map
+    score_quantile : int in [0, 100]
+        percentage quantile where top (quantile)% of contacts are averaged over to compute score
+    n_groups : int
+        saddle matrices will be of shape (n_groups + 2, n_groups + 2), i.e. the first eigenvector
+        is sorted and coarse-grained into n_groups + 2 quantile bins.
+
+    Returns
+    -------
+    cs2 : float
+        over all comp score (AA + BB - 2AB) / (AA + BB + 2AB)
+    AA_cs2 : float
+        A compartment score (AA - AB) / (AA + AB)
+    BB_cs2 : float
+        B compartment score (BB - AB) / (BB + AB)
+
     """
-    Return the values of the quantile cut points specified by fractions `q` of
-    a sequence of data given by `x`.
-    """
-    x = np.asarray(x)
-    p = np.asarray(q) * 100
-    return np.nanpercentile(x, p, **kwargs)
-
-def bin_track(e1, qrange, n_bins):
-    """ Create saddle plot from an observed over expected matrix, an E1 track, and the """
-    qlo, qhi = qrange
-    if qlo < 0.0 or qhi > 1.0:
-        raise ValueError("qrange must specify quantiles in (0.0,1.0)")
-    if qlo > qhi:
-        raise ValueError("qrange does not satisfy qrange[0]<qrange[1]")
-    q_edges = np.linspace(qlo, qhi, n_bins + 1)
-    binedges = _quantile(e1, q_edges)
-    return binedges
-
-def digitize_track(e1, qrange, n_bins):
-    df = pd.DataFrame()
-    df['E1'] = e1
-    binedges = bin_track(e1, qrange, n_bins)
-    df['E1.d'] = np.digitize(e1, binedges, right=False)
-    return df, binedges
-
-def balance(contactmap, max_iter=50):
-    """ Balance simulated contact map using iterative correction such as the rows
-    and columns of the matrix sum to 1. """
-    map_balanced, totalBias, report = iterative_correction_symmetric(contactmap, max_iter=max_iter)
-    map_balanced /= np.mean(map_balanced.sum(axis=1))
-    return map_balanced
-
-def obs_over_exp(map_balanced):
-    map_oe, dist_bins, sum_pixels, n_pixels = observed_over_expected(map_balanced)
-    return map_oe
-
-def calculate_e1(map_oe):
-    map_oe -= 1.0 #first mean center the OE matrix
-    eigvecs, eigvals = numutils.get_eig(map_oe, 3, mask_zero_rows=True)
-    eigvecs /= np.sqrt(np.nansum(eigvecs ** 2, axis=1))[:, None]
-    eigvecs *= np.sqrt(np.abs(eigvals))[:, None]
-    return eigvecs[0]
-
-def saddle(e1, oe, n_bins):
-    e1_sort_inds = np.argsort(e1)
-    sorted_map = oe[e1_sort_inds, :][:, e1_sort_inds]
-    interaction_sum = np.zeros((n_bins + 2, n_bins + 2))
-    interaction_count = np.zeros((n_bins + 2, n_bins + 2))
-    bins_per_quantile = int(sorted_map.shape[0] / (n_bins + 2))
-    for n in range(n_bins + 2):
-        data = sorted_map[n * bins_per_quantile : (n+1)*bins_per_quantile, :]
-        for m in range(n_bins + 2):
-            square = data[:, m * bins_per_quantile : (m+1)*bins_per_quantile]
-            square = square[np.isfinite(square)]
-            interaction_sum[n, m] = np.sum(square)
-            interaction_count[n, m] = float(len(square))
-    interaction_count += interaction_count.T
-    interaction_sum += interaction_sum.T
-    return interaction_sum, interaction_count
-
-#load data, balance, compute e1
-def process_data(filename, score_quantile=25, q_lo=0.025, q_hi=0.975, n_groups=38):
     contactmap = np.load(filename)
     #balance the map
     mat_balanced, totalBias, report = iterative_correction_symmetric(contactmap, max_iter=50)
@@ -139,10 +125,56 @@ def process_data(filename, score_quantile=25, q_lo=0.025, q_hi=0.975, n_groups=3
     cs2, AA_cs2, BB_cs2 = comp_score_2(S, C, score_quantile)
     return cs2, AA_cs2, BB_cs2
 
+def saddle(e1, oe, n_bins):
+    """ Compute two matrices of interaction sums / interaction counts
+    from an e1 track and an observed over expected contact map.
+
+    Parameters
+    ----------
+    e1 : array-like (N,)
+        first eigenvector of mean-centered observed over expected map
+    oe : array-like (N, N)
+        observed over expected contact map (not mean-centered)
+    n_bins : int
+        number of quantile bins to sort e1 into
+
+    Returns
+    -------
+    S : np.ndarray[float] (n_bins + 2, n_bins + 2)
+        sorted obs/exp contact map containing sum of contacts within each quantile
+    C : np.ndarray[float] (n_bins + 2, n_bins + 2)
+        matrix storing number of contacts in each quantile bin
+    """
+
+    e1_sort_inds = np.argsort(e1)
+    sorted_map = oe[e1_sort_inds, :][:, e1_sort_inds]
+    interaction_sum = np.zeros((n_bins + 2, n_bins + 2))
+    interaction_count = np.zeros((n_bins + 2, n_bins + 2))
+    bins_per_quantile = int(sorted_map.shape[0] / (n_bins + 2))
+    for n in range(n_bins + 2):
+        data = sorted_map[n * bins_per_quantile : (n+1)*bins_per_quantile, :]
+        for m in range(n_bins + 2):
+            square = data[:, m * bins_per_quantile : (m+1)*bins_per_quantile]
+            square = square[np.isfinite(square)]
+            interaction_sum[n, m] = np.sum(square)
+            interaction_count[n, m] = float(len(square))
+    interaction_count += interaction_count.T
+    interaction_sum += interaction_sum.T
+    return interaction_sum, interaction_count
+
 def comp_score_2(S, C, quantile):
     """ Compute normalized compartment score from interaction_sum, interaction_count
     saddle matrices. The score is essentially (AA + BB - 2AB) / (AA + BB + 2AB)
-    where average contacts in the top quantile are considered. """
+    where average contacts in the top quantile are considered. 
+
+    Parameters
+    ----------
+    S, C : 2D arrays, square, same shape
+        Saddle sums and counts, respectively
+    quantile : int in [0, 100]
+        percentage quantile over which to compute comp score
+
+    """
     m, n = S.shape
     AA_oe, BB_oe, AB_oe, AA_ratios, BB_ratios, ratios = saddle_strength_A_B(S, C)
     ind = int(quantile // (100 / n))
@@ -200,6 +232,34 @@ def saddle_strength_A_B(S, C):
         ratios[k] = intra / inter
     return AA_oe, BB_oe, AB_oe, AA_ratios, BB_ratios, ratios
 
+""" Helper functions for saddle plot code """
+
+def _quantile(x, q, **kwargs):
+    """
+    Return the values of the quantile cut points specified by fractions `q` of
+    a sequence of data given by `x`.
+    """
+    x = np.asarray(x)
+    p = np.asarray(q) * 100
+    return np.nanpercentile(x, p, **kwargs)
+
+def bin_track(e1, qrange, n_bins):
+    """ Create saddle plot from an observed over expected matrix, an E1 track, and the """
+    qlo, qhi = qrange
+    if qlo < 0.0 or qhi > 1.0:
+        raise ValueError("qrange must specify quantiles in (0.0,1.0)")
+    if qlo > qhi:
+        raise ValueError("qrange does not satisfy qrange[0]<qrange[1]")
+    q_edges = np.linspace(qlo, qhi, n_bins + 1)
+    binedges = _quantile(e1, q_edges)
+    return binedges
+
+def digitize_track(e1, qrange, n_bins):
+    df = pd.DataFrame()
+    df['E1'] = e1
+    binedges = bin_track(e1, qrange, n_bins)
+    df['E1.d'] = np.digitize(e1, binedges, right=False)
+    return df, binedges
 
 def saddleplot(
     track,
@@ -395,11 +455,15 @@ def saddleplot(
     return grid
 
 def monomer_density_from_volume_density(x, N=1000):
+    """ Compute monomer density (number of monomers per unit volume) from
+    volume fraction (N_monomers * volume of monomer / volume)."""
     R = ((N * (0.5)**3) / x)**(1/3)
     density = N / (4/3 * np.pi * R**3)
     return density
 
 def volume_density_from_monomer_density(y, N=1000):
+    """ Compute volume fraction (N_monomers * volume of monomer / volume) from
+    monomer density (N_monomers / volume)."""
     r = (3 * N / (4 * 3.141592 * y)) ** (1/3)
     vol_fraction = N * (0.5)**3 / r**3
     return vol_fraction
@@ -425,8 +489,16 @@ def compute_comp_scores_sticky():
         else:
             times.append(200000)
         cs2, AA_cs2, BB_cs2 = process_data(file)
-        BB_strength.append(BB_cs2)
-        AA_strength.append(AA_cs2)
+        if BB_E0[-1] == 0.4:
+            if vol_fraction[-1] < 0.35:
+                BB_strength.append(max(BB_cs2, AA_cs2))
+                AA_strength.append(min(BB_cs2, AA_cs2))
+            else:
+                BB_strength.append(min(BB_cs2, AA_cs2))
+                AA_strength.append(max(BB_cs2, AA_cs2))
+        else:
+            BB_strength.append(BB_cs2)
+            AA_strength.append(AA_cs2)
         comp_scores.append(cs2)
     df['volume_fraction'] = vol_fraction
     df['BB_energy'] = BB_E0
@@ -459,8 +531,9 @@ def compute_comp_scores_active():
         else:
             times.append(200000)
         cs2, AA_cs2, BB_cs2 = process_data(file)
-        BB_strength.append(BB_cs2)
-        AA_strength.append(AA_cs2)
+        #for activity difference model, B strength always > A strength
+        BB_strength.append(max(np.abs(BB_cs2), np.abs(AA_cs2)))
+        AA_strength.append(min(np.abs(BB_cs2), np.abs(AA_cs2)))
         comp_scores.append(cs2)
     df['volume_fraction'] = vol_fraction
     df['activity_ratio'] = activity_ratios

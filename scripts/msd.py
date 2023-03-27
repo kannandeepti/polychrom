@@ -30,7 +30,12 @@ import pandas as pd
 import scipy
 import scipy.stats
 
-import polychrom
+import sys
+try:
+    import polychrom
+except:
+    sys.path.append('/home/dkannan/git-remotes/polychrom')
+    import polychrom
 from polychrom import polymer_analyses, contactmaps, polymerutils
 from polychrom.hdf5_format import list_URIs, load_URI, load_hdf5_file
 
@@ -247,8 +252,8 @@ def compile_Dapp_alpha_stats(savepath='/net/levsha/share/deepti/data/msds/',
     df.to_csv(savepath/'compiled_time_ave_msd_stats_chr2blobelAB.csv', index=False)
 
 if __name__ == "__main__":
-    simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB/comps_5.974x/runs200000_100')
-    save_MSD_ensemble_ave(simdir)
+    simdir = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB/sticky_BB_0.4/runs200000_100')
+    save_MSD_ensemble_ave(simdir, savefile='data/ens_ave_AB_msds_sticky_BB_0.4.csv')
     #simpath = Path('/net/levsha/share/deepti/simulations/chr2_blobel_AB/comps_10.0x_rouse')
     #save_MSD_time_ave(simpath)
     #calc_MSD_time_ave_many_sims()
