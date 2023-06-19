@@ -28,9 +28,9 @@ basepath = Path("/net/levsha/share/deepti/simulations/chr2_blobel_AB")
 ids = np.load('/net/levsha/share/deepti/data/ABidentities_blobel2021_chr2_35Mb_60Mb.npy')
 N=len(ids)
 #1 is B, 0 is A
-ids ^= ids
+ids = 1 - ids
 particle_inds = np.arange(0, N, dtype="int")
-sticky_inds = particle_inds[ids]
+sticky_inds = particle_inds[ids.astype(bool)]
 
 def run_sticky_sim(gpuid, run_number, N, sticky_ids, E0, timestep=170, nblocks=200000, blocksize=100):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
@@ -125,9 +125,9 @@ def run_sticky_sim(gpuid, run_number, N, sticky_ids, E0, timestep=170, nblocks=2
     reporter.dump_data()  # always need to run in the end to dump the block cache to the disk
 
 
-if __name__ == '__main__':
+#if __name__ == '__main__':
     #run 5 simulations on each gpu for each parameter
-    gpuid = int(sys.argv[1])
-    for E0 in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5]:
-        for i in range(gpuid*runs_per_gpu, (gpuid + 1)*runs_per_gpu):
-            run_sticky_sim(gpuid, i, N, sticky_inds, E0)
+    #gpuid = int(sys.argv[1])
+    #for E0 in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5]:
+    #    for i in range(gpuid*runs_per_gpu, (gpuid + 1)*runs_per_gpu):
+    #        run_sticky_sim(gpuid, i, N, sticky_inds, E0)
